@@ -1,0 +1,22 @@
+seed: 42
+dataset: cifar100
+batch_size: 128
+epochs: 50
+lr: 0.001
+weight_decay: 0.01
+optimizer: adamw
+scheduler: cosine
+early_stopping_patience: 7
+num_workers: 4
+image_size: 224
+augmentation: null  # set to "mixup" or "cutmix" to enable
+augmentation_alpha: 1.0
+output_dir: outputs/image
+
+models:
+  cnn:
+    name: resnet18
+    pretrained: true
+  vit:
+    name: vit_small_patch16_224
+    pretrained: true

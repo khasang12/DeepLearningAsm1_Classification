@@ -1,0 +1,11 @@
+seed: 42
+dataset: cifar100
+clip_model: ViT-B-32
+clip_pretrained: openai
+few_shot_k: [1, 5, 10, 20]
+batch_size: 256
+probe_epochs: 50
+probe_lr: 0.001
+probe_weight_decay: 0.0001
+num_workers: 4
+output_dir: outputs/multimodal
