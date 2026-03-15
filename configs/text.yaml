@@ -1,0 +1,26 @@
+seed: 42
+dataset: dbpedia_14
+num_classes: 14
+batch_size: 64
+epochs: 10
+lr: 2e-5
+weight_decay: 0.01
+optimizer: adamw
+scheduler: linear_warmup
+warmup_steps: 500
+early_stopping_patience: 3
+max_seq_len: 256
+num_workers: 4
+output_dir: outputs/text
+
+models:
+  rnn:
+    embed_dim: 300
+    hidden_dim: 256
+    num_layers: 2
+    dropout: 0.3
+    lr: 0.001  # RNN uses higher LR than transformer
+  transformer:
+    name: distilbert-base-uncased
+    pretrained: true
+    freeze_backbone: false
