@@ -1,6 +1,3 @@
-# Datasets
-data/
-
 # Outputs
 outputs/
 *.pt
