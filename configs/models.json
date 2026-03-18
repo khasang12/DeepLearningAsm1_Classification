@@ -1,0 +1,66 @@
+{
+  "image": {
+    "cnn": {
+      "model_class": "src.models.cnn.ResNetClassifier",
+      "model_name": "resnet50",
+      "checkpoint_id": "13V_gYuz-LAUQTDYsRZcM9kT7dG2F46hh",
+      "num_classes": 100,
+      "pretrained": false,
+      "class_names_source": "src.data.image_dataset.CIFAR100_CLASSES"
+    },
+    "vit": {
+      "model_class": "src.models.vit.ViTClassifier",
+      "model_name": "torchvision/vit_b_16",
+      "checkpoint_id": "1gAHiEHNg7bYlpRCZW7onP_3t2cr5WLpR",
+      "num_classes": 100,
+      "pretrained": false,
+      "class_names_source": "src.data.image_dataset.CIFAR100_CLASSES"
+    },
+    "mobilenetv3": {
+      "model_class": "src.models.mobilenetv3.MobileNetV3Classifier",
+      "model_name": "mobilenetv3_small",
+      "checkpoint_id": "1179tcBQMbdzI73QwW9ldRW5tFuqsSyrB",
+      "num_classes": 100,
+      "pretrained": false,
+      "class_names_source": "src.data.image_dataset.CIFAR100_CLASSES"
+    }
+  },
+  "text": {
+    "bilstm": {
+      "model_class": "src.models.rnn.BiLSTMClassifier",
+      "checkpoint_id": "YOUR_GOOGLE_DRIVE_FILE_ID_FOR_BILSTM",
+      "vocab_id": "YOUR_GOOGLE_DRIVE_FILE_ID_FOR_BILSTM_VOCAB",
+      "num_classes": 14,
+      "vocab_size": 50000,
+      "embed_dim": 300,
+      "hidden_dim": 256,
+      "num_layers": 2,
+      "dropout": 0.3,
+      "class_names_source": "src.data.text_dataset.DBPEDIA_CLASSES"
+    },
+    "distilbert": {
+      "model_class": "src.models.transformer_text.DistilBERTClassifier",
+      "checkpoint_id": "YOUR_GOOGLE_DRIVE_FILE_ID_FOR_DISTILBERT",
+      "num_classes": 14,
+      "pretrained": true,
+      "class_names_source": "src.data.text_dataset.DBPEDIA_CLASSES"
+    }
+  },
+  "multimodal": {
+    "clip_zero": {
+      "model_class": "src.models.clip_zeroshot.CLIPZeroShotClassifier",
+      "model_name": "ViT-B-32",
+      "pretrained": "openai",
+      "num_classes": 100,
+      "class_names_source": "src.data.image_dataset.CIFAR100_CLASSES"
+    },
+    "clip_few": {
+      "model_class": "src.models.clip_fewshot.CLIPFewShotClassifier",
+      "model_name": "ViT-B-32",
+      "pretrained": "openai",
+      "checkpoint_id": "YOUR_GOOGLE_DRIVE_FILE_ID_FOR_CLIP_FEWSHOT",
+      "num_classes": 100,
+      "class_names_source": "src.data.image_dataset.CIFAR100_CLASSES"
+    }
+  }
+}

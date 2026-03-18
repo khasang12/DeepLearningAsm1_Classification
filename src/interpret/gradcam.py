@@ -127,7 +127,7 @@ class GradCAM:
         heatmap : (H, W) — Grad-CAM heatmap in [0, 1]
         """
         # Denormalize image for display
-        img = image.cpu().numpy().transpose(1, 2, 0)
+        img = image.detach().cpu().numpy().transpose(1, 2, 0)
         mean = np.array([0.5071, 0.4867, 0.4408])
         std = np.array([0.2675, 0.2565, 0.2761])
         img = img * std + mean
