@@ -6025,4 +6025,4 @@ dev = ["black", "pytest", "ruff"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10"
-content-hash = "61f47cc743f42151a2b8ba09008b5b65f56da6bc3aca8795e6d3d152fbd8ec42"
+content-hash = "f0894094b3f967ca95cc22494b31e26f5d74dfd8f4f9347062d637979ce522c2"
