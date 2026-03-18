@@ -4,6 +4,7 @@ from .rnn import BiLSTMClassifier
 from .transformer_text import DistilBERTClassifier
 from .clip_zeroshot import CLIPZeroShotClassifier
 from .clip_fewshot import CLIPFewShotClassifier
+from .mobilenetv3 import MobileNetV3Classifier
 
 __all__ = [
     "ResNetClassifier",
@@ -12,4 +13,5 @@ __all__ = [
     "DistilBERTClassifier",
     "CLIPZeroShotClassifier",
     "CLIPFewShotClassifier",
+    "MobileNetV3Classifier",
 ]

@@ -15,7 +15,6 @@
   - [Task 1: Image Classification](#task-1-image-classification-cnn-vs-vit)
   - [Task 2: Text Classification](#task-2-text-classification-bilstm-vs-distilbert)
   - [Task 3: Multimodal Classification](#task-3-multimodal-classification-clip-zero-shot-vs-few-shot)
-  - [Gradio Demo App](#gradio-demo-app)
 - [Configuration](#configuration)
 - [Outputs & Evaluation](#outputs--evaluation)
 - [Running on Google Colab](#running-on-google-colab)
@@ -29,7 +28,7 @@ This project implements and compares deep learning classification models across 
 
 | Task | Dataset | Model A | Model B | Classes |
 |---|---|---|---|---|
-| **Image** | CIFAR-100 (60K images) | ResNet-18 (CNN) | ViT-Small (Vision Transformer) | 100 |
+| **Image** | CIFAR-100 (60K images) | ResNet-50 (CNN) | ViT-Small (Vision Transformer) | 100 |
 | **Text** | DBpedia-14 (560K articles) | BiLSTM + Self-Attention | DistilBERT Fine-tuning | 14 |
 | **Multimodal** | CIFAR-100 + CLIP prompts | CLIP Zero-shot | CLIP Few-shot (Linear Probe) | 100 |
 
@@ -37,7 +36,7 @@ This project implements and compares deep learning classification models across 
 
 - **Interpretability**: Grad-CAM (CNN), attention map visualization (ViT, BiLSTM, DistilBERT)
 - **Advanced Augmentation**: MixUp, CutMix, RandAugment
-- **Deployment**: Gradio web demo with all 3 tasks
+- **Deployment**: Streamlit web demo with all 3 tasks
 
 ---
 
@@ -58,7 +57,7 @@ DeepLearningAsm1_Classification/
 │   │   └── multimodal_dataset.py   # CIFAR-100 for CLIP (zero/few-shot)
 │   │
 │   ├── models/                     # Model architectures
-│   │   ├── cnn.py                  # ResNet-18/34/50 classifier
+│   │   ├── cnn.py                  # ResNet-50/34/50 classifier
 │   │   ├── vit.py                  # ViT-Small via timm
 │   │   ├── rnn.py                  # BiLSTM + Self-Attention
 │   │   ├── transformer_text.py     # DistilBERT fine-tuning
@@ -83,7 +82,7 @@ DeepLearningAsm1_Classification/
 │   ├── train_image.py              # Train & evaluate CNN vs ViT
 │   ├── train_text.py               # Train & evaluate BiLSTM vs DistilBERT
 │   ├── train_multimodal.py         # Evaluate CLIP zero-shot vs few-shot
-│   └── demo_app.py                 # Gradio web demo (3 tabs)
+│   └── streamlit_app.py            # Streamlit web demo (3 tabs)
 │
 ├── notebooks/                      # Self-contained Colab notebooks (if present)
 ├── outputs/                        # Generated outputs (git-ignored)
@@ -100,7 +99,7 @@ DeepLearningAsm1_Classification/
 
 ## Requirements
 
-- **Python** ≥ 3.9
+- **Python** ≥ 3.10
 - **GPU** recommended (NVIDIA with CUDA) — works on CPU but very slow
 - **Disk** ~2 GB for datasets (auto-downloaded on first run)
 - **RAM** ≥ 8 GB system, ≥ 12 GB GPU VRAM (for T4 or better)
@@ -127,25 +126,27 @@ DeepLearningAsm1_Classification/
 git clone https://github.com/khasang12/DeepLearningAsm1_Classification.git
 cd DeepLearningAsm1_Classification
 
-# 2. Create a virtual environment (recommended)
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate   # Windows
+# 2. Install dependencies via Poetry (recommended)
+# Activated environment will be created automatically
+poetry install
 
-# 3. Install all dependencies
-pip install -e .
+# 3. Activate the environment (Poetry 2.0+)
+poetry env activate
 
 # 4. Verify installation
-python -c "import torch; print(f'PyTorch {torch.__version__}, CUDA: {torch.cuda.is_available()}')"
+poetry run python -c "import torch; print(f'PyTorch {torch.__version__}, CUDA: {torch.cuda.is_available()}')"
 ```
+
+> [!NOTE]
+> If you don't have Poetry installed, follow the [official installation guide](https://python-poetry.org/docs/#installation).
 
 ---
 
 ## Usage
 
-All training scripts follow the same pattern:
+All training scripts should be run through Poetry to ensure dependencies are available:
 ```bash
-python scripts/train_<task>.py --config configs/<task>.yaml [--override_key value]
+poetry run python scripts/train_<task>.py --config configs/<task>.yaml [--override_key value]
 ```
 
 ### Task 1: Image Classification (CNN vs ViT)
@@ -166,7 +167,7 @@ python scripts/train_image.py --config configs/image.yaml --augmentation cutmix
 
 **What it does:**
 1. Downloads CIFAR-100 (auto, first run only)
-2. Trains ResNet-18 with early stopping → saves `outputs/image/checkpoints/cnn_best.pt`
+2. Trains ResNet-50 with early stopping → saves `outputs/image/checkpoints/cnn_best.pt`
 3. Trains ViT-Small with early stopping → saves `outputs/image/checkpoints/vit_best.pt`
 4. Evaluates both on the test set
 5. Generates confusion matrices, training curves, and comparison charts
@@ -211,17 +212,19 @@ python scripts/train_multimodal.py --config configs/multimodal.yaml --few_shot_k
 
 ---
 
-### Gradio Demo App
+### Streamlit Demo App
+
+The refined Streamlit application provides a better interactive experience with model caching and visualization support.
 
 ```bash
-python scripts/demo_app.py
-# Opens at http://localhost:7860
+# Run via Poetry
+poetry run streamlit run scripts/streamlit_app.py
 ```
 
 Three interactive tabs:
-- **🖼 Image** — Upload image → classify with CNN & ViT + Grad-CAM
-- **📝 Text** — Enter text → classify with BiLSTM & DistilBERT
-- **🔗 Multimodal** — Upload image → CLIP zero-shot top-10 predictions
+- **🖼 Image** — Upload image → classify with CNN & ViT + Grad-CAM/Attention visualization.
+- **📝 Text** — (Template) Sentiment analysis workflow.
+- **🔗 Multimodal** — (Template) CLIP zero-shot classification workflow.
 
 ---
 
@@ -375,7 +378,7 @@ pytest tests/
 | `num_workers` causing crashes | Set `num_workers: 0` on Windows or low-RAM systems |
 | Slow training on CPU | Use Google Colab with GPU runtime |
 | Dataset download fails | Check internet connection; datasets are cached after first download in `./data/` or `~/.cache/huggingface/` |
-| `ModuleNotFoundError: src` | Run `pip install -e .` from the project root |
+| `ModuleNotFoundError: src` | Run `poetry install` or `pip install -e .` |
 
 ### File Responsibilities
 
