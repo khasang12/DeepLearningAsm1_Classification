@@ -17,8 +17,6 @@
   - [Task 3: Multimodal Classification](#task-3-multimodal-classification-clip-zero-shot-vs-few-shot)
 - [Configuration](#configuration)
 - [Outputs & Evaluation](#outputs--evaluation)
-- [Running on Google Colab](#running-on-google-colab)
-- [Maintenance & Development Guide](#maintenance--development-guide)
 
 ---
 
@@ -28,15 +26,17 @@ This project implements and compares deep learning classification models across 
 
 | Task | Dataset | Model A | Model B | Classes |
 |---|---|---|---|---|
-| **Image** | CIFAR-100 (60K images) | ResNet-50 (CNN) | ViT-Small (Vision Transformer) | 100 |
+| **Image** | CIFAR-100 (60K images) | ResNet-50 (CNN) | ViT-B/16 (Vision Transformer) | 100 |
 | **Text** | DBpedia-14 (560K articles) | BiLSTM + Self-Attention | DistilBERT Fine-tuning | 14 |
 | **Multimodal** | CIFAR-100 + CLIP prompts | CLIP Zero-shot | CLIP Few-shot (Linear Probe) | 100 |
 
 ### Bonus Features
 
-- **Interpretability**: Grad-CAM (CNN), attention map visualization (ViT, BiLSTM, DistilBERT)
-- **Advanced Augmentation**: MixUp, CutMix, RandAugment
-- **Deployment**: Streamlit web demo with all 3 tasks
+- **Image**
+  - **Interpretability**: Grad-CAM (CNN), attention map visualization
+  - **Ensemble**: Soft Voting (ResNet50 + ViT-B/16)
+  - **Robustness Evaluation**: Add visual "static" (Gaussian Noise) to the test set
+  - **Error Analysis**: Confusion Matrix, Top 5 Most Confused Pairs, Visualizing the Hardest Examples
 
 ---
 
@@ -277,13 +277,6 @@ outputs/
     └── reports/              # zero-shot vs few-shot comparison
 ```
 
-### Viewing TensorBoard Logs
-
-```bash
-tensorboard --logdir outputs/
-# Open http://localhost:6006
-```
-
 ### Evaluation Metrics
 
 All tasks report:
@@ -293,106 +286,6 @@ All tasks report:
 - **F1-score** (macro) — Harmonic mean of precision and recall
 - **Confusion Matrix** — Heatmap visualization (saved as PNG)
 - **Classification Report** — Full per-class breakdown (printed to console)
-
----
-
-## Running on Google Colab
-
-1. **Set GPU runtime**: `Runtime → Change runtime type → GPU (T4)`
-
-2. **Setup**:
-```python
-!git clone https://github.com/khasang12/DeepLearningAsm1_Classification.git
-%cd DeepLearningAsm1_Classification
-!pip install -e . -q
-```
-
-3. **Train** (optimized for T4 GPU):
-```python
-# Task 1
-!python scripts/train_image.py --batch_size 256 --num_workers 4
-
-# Task 2
-!python scripts/train_text.py --batch_size 64 --num_workers 4
-
-# Task 3
-!python scripts/train_multimodal.py --batch_size 512 --num_workers 4
-```
-
-4. **Download results**:
-```python
-import shutil
-shutil.make_archive("outputs", "zip", ".", "outputs")
-from google.colab import files
-files.download("outputs.zip")
-```
-
-### Recommended Batch Sizes by GPU
-
-| GPU | Image | Text | Multimodal |
-|---|---|---|---|
-| T4 (16 GB) | 256 | 64 | 512 |
-| A100 (40 GB) | 512 | 128 | 1024 |
-| CPU (no GPU) | 32 | 16 | 64 |
-
----
-
-## Maintenance & Development Guide
-
-### Adding a New Model
-
-1. Create a new file in `src/models/`, e.g. `src/models/my_model.py`
-2. Implement a `nn.Module` subclass with a `forward(x) → logits` signature
-3. Register it in `src/models/__init__.py`
-4. Add configuration in the appropriate `configs/*.yaml`
-5. Update the training script to instantiate and train your model
-
-### Adding a New Dataset
-
-1. Create a new file in `src/data/`, e.g. `src/data/my_dataset.py`
-2. Implement a `get_<name>_dataloaders()` function returning `train_loader`, `val_loader`, `test_loader`, `class_names`, `num_classes`
-3. Register it in `src/data/__init__.py`
-4. Update the training script to use the new data source
-
-### Code Style & Quality
-
-```bash
-# Install dev dependencies
-pip install -e ".[dev]"
-
-# Format code
-black src/ scripts/
-
-# Lint
-ruff check src/ scripts/
-
-# Run tests (if added)
-pytest tests/
-```
-
-### Common Issues & Troubleshooting
-
-| Issue | Solution |
-|---|---|
-| `CUDA out of memory` | Reduce `batch_size` by half |
-| `num_workers` causing crashes | Set `num_workers: 0` on Windows or low-RAM systems |
-| Slow training on CPU | Use Google Colab with GPU runtime |
-| Dataset download fails | Check internet connection; datasets are cached after first download in `./data/` or `~/.cache/huggingface/` |
-| `ModuleNotFoundError: src` | Run `poetry install` or `pip install -e .` |
-
-### File Responsibilities
-
-| Layer | Files | Role |
-|---|---|---|
-| **Entry points** | `scripts/train_*.py`, `scripts/demo_app.py` | CLI commands, orchestration |
-| **Models** | `src/models/*.py` | Architecture definitions only |
-| **Data** | `src/data/*.py` | Dataset loading, transforms, DataLoaders |
-| **Engine** | `src/engine/trainer.py`, `evaluator.py` | Training loop, metrics, visualization |
-| **Utilities** | `src/utils/*.py` | Config, logging, seeding, augmentation |
-| **Interpret** | `src/interpret/*.py` | Grad-CAM, attention maps |
-| **Config** | `configs/*.yaml` | All hyperparameters (no hardcoded values) |
-
----
 
 ## License
 

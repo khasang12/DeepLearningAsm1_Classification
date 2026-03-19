@@ -94,6 +94,7 @@ def image_classification_tab(model_loader, device):
         if image_file:
             image = Image.open(image_file)
             st.image(image, caption="Uploaded Image")
+            st.caption(f"Raw Image Size: {image.size[0]}x{image.size[1]} (W x H)")
 
     if image_file and model_type and st.button("Run Inference", type="primary", key="image_infer"):
         with st.spinner("Loading model and running inference..."):
@@ -104,6 +105,7 @@ def image_classification_tab(model_loader, device):
 
                 # Preprocess and predict
                 tensor = preprocess_image(image, device=device)
+                st.info(f"Processed Tensor Shape for Inference: {list(tensor.shape)} (B x C x H x W)")
                 with torch.no_grad():
                     logits = model(tensor)
 
@@ -247,11 +249,11 @@ def multimodal_classification_tab(model_loader, device):
             ["multimodal.clip_zero", "multimodal.clip_few"],
             key="clip_model"
         )
-
     with col2:
         if clip_image:
             image = Image.open(clip_image)
             st.image(image, caption="Uploaded Image")
+            st.caption(f"Raw Image Size: {image.size[0]}x{image.size[1]} (W x H)")
 
     if clip_image and model_type and st.button("Run CLIP Inference", type="primary", key="clip_infer"):
         with st.spinner("Running CLIP inference..."):
@@ -266,6 +268,8 @@ def multimodal_classification_tab(model_loader, device):
                 else:
                     # Fallback to standard preprocessing
                     tensor = preprocess_image(image, device=device)
+                
+                st.info(f"Processed Tensor Shape for Inference: {list(tensor.shape)} (B x C x H x W)")
 
                 with torch.no_grad():
                     if model_type == "multimodal.clip_zero":
