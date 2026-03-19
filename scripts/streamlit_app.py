@@ -92,7 +92,7 @@ def image_classification_tab(model_loader, device):
 
     with col2:
         if image_file:
-            image = Image.open(image_file)
+            image = Image.open(image_file).convert("RGB")
             st.image(image, caption="Uploaded Image")
             st.caption(f"Raw Image Size: {image.size[0]}x{image.size[1]} (W x H)")
 
@@ -251,7 +251,7 @@ def multimodal_classification_tab(model_loader, device):
         )
     with col2:
         if clip_image:
-            image = Image.open(clip_image)
+            image = Image.open(clip_image).convert("RGB")
             st.image(image, caption="Uploaded Image")
             st.caption(f"Raw Image Size: {image.size[0]}x{image.size[1]} (W x H)")
 

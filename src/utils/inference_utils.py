@@ -23,6 +23,8 @@ def preprocess_image(image: Image.Image, image_size: int = 224, device: str = "c
     """
     Preprocess a PIL image for model inference.
     """
+    if image.mode != "RGB":
+        image = image.convert("RGB")
     transform = get_image_transform(image_size)
     tensor = transform(image).unsqueeze(0)
     return tensor.to(device)
