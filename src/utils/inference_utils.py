@@ -13,7 +13,8 @@ def get_image_transform(image_size: int = 224) -> transforms.Compose:
     Get the standard image transform for CIFAR-100 models.
     """
     return transforms.Compose([
-        transforms.Resize((image_size, image_size)),
+        transforms.Resize(image_size),
+        transforms.CenterCrop(image_size),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.5071, 0.4867, 0.4408], std=[0.2675, 0.2565, 0.2761])
     ])
