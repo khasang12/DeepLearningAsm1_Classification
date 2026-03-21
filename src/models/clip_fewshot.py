@@ -1,160 +1,139 @@
-"""CLIP few-shot classification via linear probing on frozen embeddings."""
+"""CLIP few-shot prototype classification using HuggingFace Transformers."""
 
 from __future__ import annotations
 
 import torch
 import torch.nn as nn
-import open_clip
-from torch.utils.data import DataLoader
-from tqdm import tqdm
+import numpy as np
+from transformers import CLIPModel, CLIPProcessor
 
-from src.utils.logger import get_logger
+
+def _get_clip_image_embeds(clip_model, pixel_values):
+    """Extract 512-d image embeddings using explicit projection (transformers 5.x safe)."""
+    vision_outputs = clip_model.vision_model(pixel_values=pixel_values)
+    image_embeds = clip_model.visual_projection(vision_outputs.pooler_output)
+    return image_embeds
+
+
+def _get_clip_text_embeds(clip_model, input_ids, attention_mask):
+    """Extract 512-d text embeddings using explicit projection (transformers 5.x safe)."""
+    text_outputs = clip_model.text_model(input_ids=input_ids, attention_mask=attention_mask)
+    text_embeds = clip_model.text_projection(text_outputs.pooler_output)
+    return text_embeds
 
 
 class CLIPFewShotClassifier(nn.Module):
-    """Few-shot classifier using a linear probe on frozen CLIP image embeddings.
+    """Few-shot classifier using CLIP prototype network (HuggingFace).
 
     Architecture
     ------------
-    Frozen CLIP Image Encoder → Embedding → Linear Probe → Prediction
+    Frozen CLIP Image+Text → visual/text_projection → Concat [512+512=1024]
+    → Prototype (mean per class) → Cosine Similarity → Prediction
 
-    The CLIP image encoder is frozen; only a lightweight linear classifier
-    is trained on the K-shot support set per class.
+    No neural network layers are trained. Classification by nearest prototype.
     """
 
     def __init__(
         self,
-        num_classes: int = 100,
-        model_name: str = "ViT-B-32",
-        pretrained: str = "openai",
+        model_name: str = "openai/clip-vit-base-patch32",
+        pretrained: bool = True,
+        num_classes: int = 10,
     ):
         super().__init__()
-        self.clip_model, _, self.preprocess = open_clip.create_model_and_transforms(
-            model_name, pretrained=pretrained,
-        )
+        self.model_name = model_name
+        self.clip_model = CLIPModel.from_pretrained(model_name)
+        self.processor = CLIPProcessor.from_pretrained(model_name)
 
-        # Freeze CLIP encoder
+        # Freeze everything — no training
         for param in self.clip_model.parameters():
             param.requires_grad = False
 
-        # Determine embedding dimension
-        embed_dim = self.clip_model.visual.output_dim
+        self.num_classes = num_classes
+        self._prototypes: torch.Tensor | None = None  # (num_classes, embed_dim)
 
-        # Trainable linear probe
-        self.probe = nn.Sequential(
-            nn.LayerNorm(embed_dim),
-            nn.Linear(embed_dim, num_classes),
-        )
+    def set_prototypes(self, prototypes: torch.Tensor | np.ndarray) -> None:
+        """Set pre-computed class prototypes."""
+        if isinstance(prototypes, np.ndarray):
+            prototypes = torch.from_numpy(prototypes).float()
+        self._prototypes = prototypes / prototypes.norm(dim=-1, keepdim=True)
 
-        self.logger = get_logger()
+    def load_prototypes_from_checkpoint(self, checkpoint_path: str, device: str = "cpu") -> None:
+        """Load prototypes from a saved checkpoint file.
+
+        The checkpoint is a dict saved by multimodal_pretrained.py containing
+        'prototypes_normalized' (numpy array of shape (num_classes, 1024)).
+        """
+        data = torch.load(checkpoint_path, map_location=device, weights_only=False)
+
+        if not isinstance(data, dict):
+            return
+
+        # Try known keys
+        protos = None
+        for key in ('prototypes_normalized', 'prototypes', 'proto'):
+            if key in data:
+                protos = data[key]
+                break
+
+        if protos is None:
+            return
+
+        if isinstance(protos, np.ndarray):
+            protos = torch.from_numpy(protos).float()
+        elif isinstance(protos, torch.Tensor):
+            protos = protos.float()
+
+        self._prototypes = protos / protos.norm(dim=-1, keepdim=True)
 
     @torch.no_grad()
-    def extract_features(self, images: torch.Tensor) -> torch.Tensor:
-        """Extract normalized CLIP image embeddings.
+    def forward(self, pixel_values: torch.Tensor, text: str | None = None) -> torch.Tensor:
+        """Classify using nearest prototype.
 
         Parameters
         ----------
-        images : (B, C, H, W)
-
-        Returns
-        -------
-        features : (B, embed_dim)
-        """
-        features = self.clip_model.encode_image(images)
-        features = features / features.norm(dim=-1, keepdim=True)
-        return features.float()
-
-    def forward(self, images: torch.Tensor) -> torch.Tensor:
-        """Forward pass: frozen feature extraction + linear probe.
-
-        Parameters
-        ----------
-        images : (B, C, H, W)
+        pixel_values : (B, C, H, W)
+        text : optional text caption for multimodal features
 
         Returns
         -------
         logits : (B, num_classes)
         """
-        with torch.no_grad():
-            features = self.extract_features(images)
-        logits = self.probe(features)
+        if self._prototypes is None:
+            raise RuntimeError(
+                "Call set_prototypes() or load_prototypes_from_checkpoint() before forward()"
+            )
+
+        device = pixel_values.device
+        prototypes = self._prototypes.to(device)
+
+        image_features = _get_clip_image_embeds(self.clip_model, pixel_values)
+        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+
+        if text:
+            text_inputs = self.processor(
+                text=[text], return_tensors="pt", padding=True, truncation=True
+            )
+            input_ids = text_inputs["input_ids"].to(device)
+            attention_mask = text_inputs["attention_mask"].to(device)
+            text_features = _get_clip_text_embeds(self.clip_model, input_ids, attention_mask)
+            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+            features = torch.cat([image_features, text_features], dim=-1)
+        else:
+            # Image-only: pad with zeros to match prototype dimension (1024)
+            proto_dim = prototypes.shape[-1]
+            img_dim = image_features.shape[-1]
+            if proto_dim > img_dim:
+                features = torch.cat([
+                    image_features,
+                    torch.zeros(image_features.shape[0], proto_dim - img_dim, device=device)
+                ], dim=-1)
+            else:
+                features = image_features
+
+        features = features / features.norm(dim=-1, keepdim=True)
+        logits = 100.0 * features @ prototypes.T
         return logits
 
-    def train_probe(
-        self,
-        train_loader: DataLoader,
-        test_loader: DataLoader,
-        epochs: int = 50,
-        lr: float = 0.001,
-        weight_decay: float = 1e-4,
-        device: str | torch.device = "cpu",
-    ) -> dict[str, float]:
-        """Train the linear probe end-to-end.
-
-        Parameters
-        ----------
-        train_loader : DataLoader
-            K-shot training data.
-        test_loader : DataLoader
-            Full test set for evaluation.
-
-        Returns
-        -------
-        dict with final accuracy and best accuracy.
-        """
-        self.to(device)
-        optimizer = torch.optim.AdamW(
-            self.probe.parameters(), lr=lr, weight_decay=weight_decay,
-        )
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
-        criterion = nn.CrossEntropyLoss()
-
-        best_acc = 0.0
-
-        for epoch in range(1, epochs + 1):
-            # --- Train ---
-            self.probe.train()
-            total_loss = 0.0
-            total = 0
-            for images, labels in train_loader:
-                images, labels = images.to(device), labels.to(device)
-                logits = self.forward(images)
-                loss = criterion(logits, labels)
-
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-
-                total_loss += loss.item() * labels.size(0)
-                total += labels.size(0)
-
-            scheduler.step()
-
-            # --- Evaluate ---
-            if epoch % 5 == 0 or epoch == epochs:
-                acc = self.evaluate(test_loader, device)
-                best_acc = max(best_acc, acc)
-                self.logger.info(
-                    f"[FewShot] Epoch {epoch}/{epochs} "
-                    f"| train_loss={total_loss / total:.4f} | test_acc={acc:.4f}"
-                )
-
-        return {"final_acc": acc, "best_acc": best_acc}
-
-    @torch.no_grad()
-    def evaluate(self, dataloader: DataLoader, device: str | torch.device = "cpu") -> float:
-        """Evaluate the probe on a test set."""
-        self.probe.eval()
-        correct = 0
-        total = 0
-        for images, labels in dataloader:
-            images, labels = images.to(device), labels.to(device)
-            logits = self.forward(images)
-            preds = logits.argmax(dim=-1)
-            correct += (preds == labels).sum().item()
-            total += labels.size(0)
-        return correct / total
-
-    def get_preprocess(self):
-        """Return the CLIP preprocessing transform."""
-        return self.preprocess
+    def get_processor(self):
+        """Return the CLIP processor for image/text preprocessing."""
+        return self.processor

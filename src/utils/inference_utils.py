@@ -49,7 +49,31 @@ def load_model_weights(model: torch.nn.Module, checkpoint_path: str, device: str
     Load model weights from a checkpoint file with robust key handling.
     """
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+
+    # If model supports custom checkpoint loading (e.g. CLIP few-shot prototypes)
+    if hasattr(model, 'load_prototypes_from_checkpoint'):
+        model.load_prototypes_from_checkpoint(checkpoint_path, device=device)
+        model.to(device)
+        model.eval()
+        return model
+
     state_dict = checkpoint.get("model_state_dict", checkpoint)
+
+    # If state_dict is not actually a state dict (e.g. a prototypes dict),
+    # skip weight loading and just return the model as-is
+    if not isinstance(state_dict, dict) or not state_dict:
+        logger.warning(f"Checkpoint at {checkpoint_path} is not a model state dict, skipping weight loading")
+        model.to(device)
+        model.eval()
+        return model
+
+    # Check if any value in state_dict is a tensor (real state_dict) vs. other data
+    sample_val = next(iter(state_dict.values()), None)
+    if sample_val is not None and not isinstance(sample_val, torch.Tensor):
+        logger.warning(f"Checkpoint values are not tensors, skipping weight loading")
+        model.to(device)
+        model.eval()
+        return model
     
     # Robust prefix handling
     model_state_dict = model.state_dict()
@@ -58,16 +82,18 @@ def load_model_weights(model: torch.nn.Module, checkpoint_path: str, device: str
     def get_mapped_key(ckpt_key):
         if ckpt_key in model_state_dict:
             return ckpt_key
-        # Try adding common prefixes
-        for prefix in ["model.", "backbone.", "backbone.model."]:
-            if f"{prefix}{ckpt_key}" in model_state_dict:
-                return f"{prefix}{ckpt_key}"
-        # Try removing common prefixes from checkpoint key
-        for prefix in ["model.", "backbone."]:
+        prefixes = ["module.", "model.", "backbone.", "encoder.", "net."]
+        # Try REMOVING common prefixes from checkpoint key
+        for prefix in prefixes:
             if ckpt_key.startswith(prefix):
                 stripped = ckpt_key[len(prefix):]
                 if stripped in model_state_dict:
                     return stripped
+        # Try ADDING common prefixes to checkpoint key
+        for prefix in prefixes:
+            prefixed = f"{prefix}{ckpt_key}"
+            if prefixed in model_state_dict:
+                return prefixed
         return None
 
     new_state_dict = {}
@@ -76,15 +102,7 @@ def load_model_weights(model: torch.nn.Module, checkpoint_path: str, device: str
         if mapped_key:
             new_state_dict[mapped_key] = v
         else:
-            # Fallback for classification heads which often differ (fc vs head vs classifier)
-            if "fc." in k or "classifier." in k:
-                # Try to find a linear layer in our head
-                for mk in model_state_dict.keys():
-                    if "head" in mk and k.split(".")[-1] == mk.split(".")[-1]:
-                        new_state_dict[mk] = v
-                        break
-            else:
-                new_state_dict[k] = v
+            new_state_dict[k] = v
 
     try:
         model.load_state_dict(new_state_dict, strict=True)
@@ -101,6 +119,7 @@ def load_model_weights(model: torch.nn.Module, checkpoint_path: str, device: str
 # Enhanced inference utilities for Streamlit app
 # -------------------------------------------------------------------
 import json
+import hashlib
 from functools import lru_cache
 import importlib
 from typing import Dict, Any
@@ -133,12 +152,9 @@ class ModelLoader:
         model_class = self._import_class(model_info["model_class"])
 
         # Filter out config keys that aren't valid constructor arguments
-        # If checkpoint exists, default pretrained=False unless explicitly requested
+        NON_CONSTRUCTOR_KEYS = {"model_class", "checkpoint_id", "class_names_source", "vocab_id"}
         valid_kwargs = {k: v for k, v in model_info.items()
-                       if k not in ["model_class", "checkpoint_id", "class_names_source"]}
-        
-        if "checkpoint_id" in model_info and "pretrained" not in valid_kwargs:
-            valid_kwargs["pretrained"] = False
+                       if k not in NON_CONSTRUCTOR_KEYS}
 
         # Instantiate model
         model = model_class(**valid_kwargs)

@@ -1,59 +1,55 @@
-"""DistilBERT-based text classifier using HuggingFace Transformers."""
+"""BERT-based text classifier with frozen backbone (linear probing)."""
 
 from __future__ import annotations
 
 import torch
 import torch.nn as nn
-from transformers import AutoModel
+from transformers import BertForSequenceClassification
 
 
-class DistilBERTClassifier(nn.Module):
-    """DistilBERT fine-tuning wrapper for text classification.
+class BERTClassifier(nn.Module):
+    """BERT with frozen backbone for text classification (linear probing).
 
     Architecture
     ------------
-    DistilBERT → [CLS] token → LayerNorm → Dropout → FC head
+    BERT (bert-base-uncased, frozen) → [CLS] → Linear(768, num_classes)
 
-    Supports:
-    - Full fine-tuning (all params trainable)
-    - Frozen backbone (only head is trained)
-    - Attention weight extraction for interpretability
+    Follows the same pattern as the Colab notebook (text_pretrained.py):
+    - Uses HuggingFace BertForSequenceClassification
+    - Entire BERT backbone is FROZEN
+    - Only the classifier head (768 → num_classes) is trained
+    - LR=1e-2 (linear probing, not fine-tuning)
     """
 
     def __init__(
         self,
-        num_classes: int = 4,
-        model_name: str = "distilbert-base-uncased",
+        num_classes: int = 14,
+        model_name: str = "bert-base-uncased",
         pretrained: bool = True,
-        freeze_backbone: bool = False,
-        dropout: float = 0.1,
+        freeze_backbone: bool = True,
     ):
         super().__init__()
-        self.backbone = AutoModel.from_pretrained(model_name) if pretrained else AutoModel.from_config(
-            AutoModel.from_pretrained(model_name).config
-        )
-        hidden_size = self.backbone.config.hidden_size
+        self.model_name = model_name
 
+        if pretrained:
+            self.model = BertForSequenceClassification.from_pretrained(
+                model_name, num_labels=num_classes
+            )
+        else:
+            from transformers import BertConfig
+            config = BertConfig.from_pretrained(model_name, num_labels=num_classes)
+            self.model = BertForSequenceClassification(config)
+
+        # Freeze BERT backbone, keep only classifier head trainable
         if freeze_backbone:
-            for param in self.backbone.parameters():
-                param.requires_grad = False
-
-        self.head = nn.Sequential(
-            nn.LayerNorm(hidden_size),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_size, hidden_size // 2),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_size // 2, num_classes),
-        )
-
-        self._last_attentions: tuple | None = None
+            for name, param in self.model.named_parameters():
+                if "classifier" not in name:
+                    param.requires_grad = False
 
     def forward(
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor | None = None,
-        labels: torch.Tensor | None = None,
         **kwargs,
     ) -> torch.Tensor:
         """
@@ -61,37 +57,13 @@ class DistilBERTClassifier(nn.Module):
         ----------
         input_ids : (B, T)
         attention_mask : (B, T)
-        labels : unused, for API compatibility
 
         Returns
         -------
         logits : (B, num_classes)
         """
-        outputs = self.backbone(
+        outputs = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
-            output_attentions=True,
         )
-        # CLS token representation
-        cls_output = outputs.last_hidden_state[:, 0]  # (B, H)
-        self._last_attentions = outputs.attentions  # tuple of (B, heads, T, T)
-
-        logits = self.head(cls_output)
-        return logits
-
-    def get_attention_maps(self) -> tuple | None:
-        """Return attention maps from all layers.
-
-        Each element: (B, num_heads, T, T)
-        """
-        return self._last_attentions
-
-    def get_cls_attention(self, layer: int = -1) -> torch.Tensor | None:
-        """Get attention weights from CLS token to all other tokens.
-
-        Returns shape (B, num_heads, T).
-        """
-        if self._last_attentions is None:
-            return None
-        attn = self._last_attentions[layer]  # (B, heads, T, T)
-        return attn[:, :, 0, :]  # CLS row
+        return outputs.logits

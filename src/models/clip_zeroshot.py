@@ -1,35 +1,48 @@
-"""CLIP zero-shot classification using OpenCLIP."""
+"""CLIP zero-shot classification using HuggingFace Transformers."""
 
 from __future__ import annotations
 
 import torch
 import torch.nn as nn
-import open_clip
+from transformers import CLIPModel, CLIPProcessor
+
+
+def _get_clip_image_embeds(clip_model, pixel_values):
+    """Extract 512-d image embeddings using explicit projection (transformers 5.x safe)."""
+    vision_outputs = clip_model.vision_model(pixel_values=pixel_values)
+    image_embeds = clip_model.visual_projection(vision_outputs.pooler_output)
+    return image_embeds
+
+
+def _get_clip_text_embeds(clip_model, input_ids, attention_mask):
+    """Extract 512-d text embeddings using explicit projection (transformers 5.x safe)."""
+    text_outputs = clip_model.text_model(input_ids=input_ids, attention_mask=attention_mask)
+    text_embeds = clip_model.text_projection(text_outputs.pooler_output)
+    return text_embeds
 
 
 class CLIPZeroShotClassifier(nn.Module):
-    """Zero-shot image classifier using CLIP.
-
-    No training is required. The model computes cosine similarity between
-    image embeddings and text embeddings of class name prompts.
+    """Zero-shot image classifier using CLIP (HuggingFace).
 
     Architecture
     ------------
-    CLIP Image Encoder → Image Embedding ─┐
-                                          ├→ Cosine Similarity → Prediction
-    CLIP Text  Encoder → Text Embedding  ─┘
+    CLIP Image Encoder → visual_projection → 512-d ─┐
+                                                      ├→ Cosine Sim → Prediction
+    CLIP Text  Encoder → text_projection → 512-d   ─┘
+
+    No training required. Classifies by computing cosine similarity between
+    image embeddings and text prompt embeddings ("a photo of a [class]").
     """
 
     def __init__(
         self,
-        model_name: str = "ViT-B-32",
-        pretrained: str = "openai",
+        model_name: str = "openai/clip-vit-base-patch32",
+        pretrained: bool = True,
     ):
         super().__init__()
-        self.clip_model, _, self.preprocess = open_clip.create_model_and_transforms(
-            model_name, pretrained=pretrained,
-        )
-        self.tokenizer = open_clip.get_tokenizer(model_name)
+        self.model_name = model_name
+        self.clip_model = CLIPModel.from_pretrained(model_name)
+        self.processor = CLIPProcessor.from_pretrained(model_name)
 
         # Freeze everything — no training
         for param in self.clip_model.parameters():
@@ -39,24 +52,21 @@ class CLIPZeroShotClassifier(nn.Module):
 
     @torch.no_grad()
     def encode_text_prompts(self, prompts: list[str], device: str | torch.device = "cpu") -> None:
-        """Pre-compute and cache normalized text embeddings for class names.
+        """Pre-compute and cache normalized text embeddings for class names."""
+        inputs = self.processor(text=prompts, return_tensors="pt", padding=True)
+        input_ids = inputs["input_ids"].to(device)
+        attention_mask = inputs["attention_mask"].to(device)
 
-        Parameters
-        ----------
-        prompts : list[str]
-            e.g. ["a photo of a cat", "a photo of a dog", ...]
-        """
-        tokens = self.tokenizer(prompts).to(device)
-        self._text_features = self.clip_model.encode_text(tokens)
-        self._text_features = self._text_features / self._text_features.norm(dim=-1, keepdim=True)
+        text_features = _get_clip_text_embeds(self.clip_model, input_ids, attention_mask)
+        self._text_features = text_features / text_features.norm(dim=-1, keepdim=True)
 
     @torch.no_grad()
-    def forward(self, images: torch.Tensor) -> torch.Tensor:
+    def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         """Classify images via cosine similarity with cached text features.
 
         Parameters
         ----------
-        images : (B, C, H, W) — preprocessed with CLIP transforms
+        pixel_values : (B, C, H, W)
 
         Returns
         -------
@@ -65,24 +75,20 @@ class CLIPZeroShotClassifier(nn.Module):
         if self._text_features is None:
             raise RuntimeError("Call encode_text_prompts() before forward()")
 
-        image_features = self.clip_model.encode_image(images)
+        image_features = _get_clip_image_embeds(self.clip_model, pixel_values)
         image_features = image_features / image_features.norm(dim=-1, keepdim=True)
 
-        # Cosine similarity scaled by temperature
         logits = 100.0 * image_features @ self._text_features.T
         return logits
 
     @torch.no_grad()
-    def predict(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Return predicted class indices and confidence scores.
-
-        Returns (predicted_classes, probabilities).
-        """
-        logits = self.forward(images)
+    def predict(self, pixel_values: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return predicted class indices and confidence scores."""
+        logits = self.forward(pixel_values)
         probs = logits.softmax(dim=-1)
         preds = probs.argmax(dim=-1)
         return preds, probs
 
-    def get_preprocess(self):
-        """Return the CLIP preprocessing transform."""
-        return self.preprocess
+    def get_processor(self):
+        """Return the CLIP processor for image/text preprocessing."""
+        return self.processor
