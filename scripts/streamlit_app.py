@@ -23,6 +23,29 @@ import matplotlib.pyplot as plt
 
 logger = get_logger("streamlit_app")
 
+CIFAR100_CLASSES = {
+    "Aquatic Mammals": ["beaver", "dolphin", "otter", "seal", "whale"],
+    "Fish": ["aquarium fish", "flatfish", "ray", "shark", "trout"],
+    "Flowers": ["orchids", "poppies", "roses", "sunflowers", "tulips"],
+    "Food Containers": ["bottles", "bowls", "cans", "cups", "plates"],
+    "Fruit and Vegetables": ["apples", "mushrooms", "oranges", "pears", "sweet peppers"],
+    "Household Electrical Devices": ["clock", "computer keyboard", "lamp", "telephone", "television"],
+    "Household Furniture": ["bed", "chair", "couch", "table", "wardrobe"],
+    "Insects": ["bee", "beetle", "butterfly", "caterpillar", "cockroach"],
+    "Large Carnivores": ["bear", "leopard", "lion", "tiger", "wolf"],
+    "Large Man-made Outdoor Things": ["bridge", "castle", "house", "road", "skyscraper"],
+    "Large Natural Outdoor Scenes": ["cloud", "forest", "mountain", "plain", "sea"],
+    "Large Omnivores and Herbivores": ["camel", "cattle", "chimpanzee", "elephant", "kangaroo"],
+    "Medium-sized Mammals": ["fox", "porcupine", "possum", "raccoon", "skunk"],
+    "Non-insect Invertebrates": ["crab", "lobster", "snail", "spider", "worm"],
+    "People": ["baby", "boy", "girl", "man", "woman"],
+    "Reptiles": ["crocodile", "dinosaur", "lizard", "snake", "turtle"],
+    "Small Mammals": ["hamster", "mouse", "rabbit", "shrew", "squirrel"],
+    "Trees": ["maple", "oak", "palm", "pine", "willow"],
+    "Vehicles 1": ["bicycle", "bus", "motorcycle", "pickup truck", "train"],
+    "Vehicles 2": ["lawn-mower", "rocket", "streetcar", "tank", "tractor"]
+}
+
 # Page configuration
 st.set_page_config(
     page_title="DL Assignment 1 - Model Inference",
@@ -68,6 +91,14 @@ def image_classification_tab(model_loader, device):
     """Image classification tab."""
     st.header("🖼 Image Classification (CIFAR-100)")
 
+    with st.expander("ℹ️ Show CIFAR-100 Classes"):
+        st.write("CIFAR-100 consists of 100 classes grouped into 20 superclasses:")
+        cols = st.columns(4)
+        for i, (superclass, classes) in enumerate(CIFAR100_CLASSES.items()):
+            with cols[i % 4]:
+                st.markdown(f"**{superclass}**")
+                st.caption(", ".join(classes))
+
     col1, col2 = st.columns([1, 1])
 
     with col1:
@@ -81,11 +112,11 @@ def image_classification_tab(model_loader, device):
         # Model selection
         model_options = ["image.cnn", "image.vit"]
         # Check if mobilenetv3 exists in config
-        try:
-            model_loader.get_model_info("image.mobilenetv3")
-            model_options.append("image.mobilenetv3")
-        except KeyError:
-            pass
+        # try:
+        #     model_loader.get_model_info("image.mobilenetv3")
+        #     model_options.append("image.mobilenetv3")
+        # except KeyError:
+        #     pass
 
         model_type = st.selectbox(
             "Select Model",
